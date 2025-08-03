@@ -127,12 +127,12 @@ export default function ClienteHome() {
                     const clienteId = clienteRes.data.usuario._id;
 
                     const res = await axios.post('/api/conversaciones', {
-                      clienteId,
-                      trabajadorId: trab._id,
+                      usuario1: clienteId,
+                      usuario2: trab._id,
                     });
 
                     const conversacion = res.data;
-                    router.push(`/dashboard/cliente/chats/${conversacion._id}`);
+                    router.push(`/dashboard/cliente/chats/conversacion/${conversacion._id}`); // ✅ Esta es la ruta correcta
                   } catch (error) {
                     console.error('Error al crear conversación', error);
                   }
