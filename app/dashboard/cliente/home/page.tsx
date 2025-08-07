@@ -40,12 +40,9 @@ export default function ClienteHome() {
     (t.profesion || '').toLowerCase().includes(filtro.toLowerCase())
   );
 
-  if (status === 'loading') {
-    return <p className="p-5 text-gray-500">Cargando sesión...</p>;
-  }
-if (status === 'unauthenticated') {
-  return null; // ⚠️ No mostramos nada mientras redirige
-}
+  if (status === 'loading') return <p className="p-5 text-gray-500">Cargando sesión...</p>;
+  if (status === 'unauthenticated') return null;
+
   return (
     <div className="relative min-h-screen bg-gray-50 lg:flex">
       {/* Menú lateral */}
@@ -56,7 +53,7 @@ if (status === 'unauthenticated') {
       </div>
 
       <aside className={`bg-white shadow-md fixed top-0 left-0 h-screen w-64 z-40 transform transition-transform duration-300
-      ${menuAbierto ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 lg:static`}>
+        ${menuAbierto ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 lg:static`}>
         <div className="h-full flex flex-col justify-between px-6 py-8">
           <div>
             <img src="/images/logo.png" alt="SkillConnect" className="h-10 mb-8" />
@@ -103,7 +100,9 @@ if (status === 'unauthenticated') {
       {/* Contenido principal */}
       <main className="flex-1 p-5 md:p-10 overflow-y-auto pt-20 lg:pt-10">
         <h1 className="text-2xl font-semibold mb-1">Inicio</h1>
-        <p className="text-sm text-gray-500 mb-4">¡Bienvenido{usuario?.nombre ? `, ${usuario.nombre}` : ''}!</p>
+        <p className="text-sm text-gray-500 mb-4">
+          ¡Bienvenido{usuario?.nombre ? `, ${usuario.nombre}` : ''}!
+        </p>
 
         {/* Filtro de búsqueda */}
         <div className="mb-6">
@@ -136,32 +135,32 @@ if (status === 'unauthenticated') {
                 Ver detalles
               </Link>
 
-              <button
-              onClick={async () => {
-  const mensajeInicial = prompt("Escribe tu primer mensaje:");
+             <button
+  onClick={async () => {
+    const mensajeInicial = prompt("Escribe tu primer mensaje:");
 
-  if (!mensajeInicial || mensajeInicial.trim() === "") {
-    alert("No puedes iniciar una conversación sin mensaje.");
-    return;
-  }
+    if (!mensajeInicial?.trim()) {
+      alert("No puedes iniciar una conversación sin mensaje.");
+      return;
+    }
 
-  try {
-    const res = await axios.post('/api/conversaciones', {
-      clienteId: usuario?.id,
-      trabajadorId: trab._id,
-      mensajeInicial: mensajeInicial.trim()
-    });
+    try {
+      const res = await axios.post('/api/conversaciones', {
+        clienteId: usuario?.id,
+        trabajadorId: trab._id,
+        mensajeInicial: mensajeInicial.trim()
+      });
 
-    const conversacion = res.data;
-router.push(`/dashboard/cliente/chats/conversacion/${conversacion._id}`);
-  } catch (error) {
-    console.error('Error al crear conversación', error);
-  }
-}}
-                className="mt-2 w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 text-sm"
-              >
-                Enviar mensaje
-              </button>
+      const conversacion = res.data;
+      router.push(`/dashboard/cliente/chats/conversacion/${conversacion._id}`);
+    } catch (error) {
+      console.error('Error al crear conversación', error);
+    }
+  }}
+  className="mt-2 w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 text-sm"
+>
+  Enviar mensaje
+</button>
             </div>
           ))}
         </div>
