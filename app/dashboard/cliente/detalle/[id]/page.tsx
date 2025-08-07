@@ -19,10 +19,19 @@ export default function DetalleServicio() {
     nombre: 'Josue Valerio',
   };
 
-  useEffect(() => {
-    const encontrado = servicios.find((s) => s.id === id);
-    if (encontrado) setServicio(encontrado);
-  }, [id]);
+ useEffect(() => {
+  const fetchTrabajador = async () => {
+    try {
+      const res = await fetch(`/api/trabajadores/${id}`);
+      const data = await res.json();
+      setServicio(data);
+    } catch (err) {
+      console.error('Error al cargar trabajador:', err);
+    }
+  };
+
+  fetchTrabajador();
+}, [id]);
 
   if (!servicio) return <div className="p-10">Servicio no encontrado</div>;
 

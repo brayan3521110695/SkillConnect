@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { signIn, getSession } from 'next-auth/react';
 import {
   AtSymbolIcon,
   KeyIcon,
@@ -12,51 +13,76 @@ import Image from 'next/image';
 import { FcGoogle } from 'react-icons/fc';
 import { FaGithub } from 'react-icons/fa';
 
+
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [tipo, setTipo] = useState<'trabajador' | 'cliente'>('trabajador');
   const [error, setError] = useState('');
   const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
+  e.preventDefault();
+  setError('');
 
-    if (!email.includes('@')) {
-      setError('Email no válido');
+  if (!email.includes('@')) {
+    setError('Email no válido');
+    return;
+  }
+
+  if (password.length < 6) {
+    setError('La contraseña debe tener al menos 6 caracteres');
+    return;
+  }
+
+  const res = await signIn('credentials', {
+    redirect: false,
+    email: email.trim().toLowerCase(),
+    password: password.trim(),
+  });
+
+  if (res?.error) {
+    setError('Credenciales inválidas');
+    return;
+  }
+
+  // Esperar a que la sesión esté disponible completamente
+  const checkSession = async () => {
+    let session = await getSession();
+    let attempts = 0;
+
+    while ((!session?.user?.rol || !session?.user?.id) && attempts < 15) {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      session = await getSession();
+      attempts++;
+    }
+
+    console.log("✅ SESSION FINAL:", session);
+
+    if (!session || !session.user) {
+      setError("Error al obtener sesión");
       return;
     }
 
-    if (password.length < 6) {
-      setError('La contraseña debe tener al menos 6 caracteres');
+    const { rol, id } = session.user;
+
+    if (!rol || !id) {
+      setError("Sesión incompleta o rol no asignado");
       return;
     }
 
-    try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, tipo })
-      });
+    localStorage.setItem('userId', id);
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        setError(data.message || data.error || 'Credenciales incorrectas');
-        return;
-      }
-
-      localStorage.setItem('token', data.token);
-      localStorage.setItem('rol', data.usuario.tipo);
-
-      router.push(data.usuario.tipo === 'trabajador' ? '/dashboard/trabajador' : '/dashboard/cliente/home');
-
-    } catch (err) {
-      console.error(err);
-      setError('Hubo un error con el servidor');
+    if (rol === 'cliente') {
+      router.push('/dashboard/cliente/home');
+    } else if (rol === 'trabajador') {
+      router.push('/dashboard/trabajador');
+    } else {
+      setError("Rol no reconocido");
     }
   };
+
+  checkSession();
+};
 
   return (
     <div className="flex flex-col lg:flex-row h-screen overflow-hidden">
@@ -109,10 +135,7 @@ export default function LoginPage() {
 
             <div className="flex items-center justify-between text-sm">
               <label className="flex items-center gap-2 text-gray-700">
-                <input
-                  type="checkbox"
-                  className="h-4 w-4 text-blue-600 border-gray-300 rounded"
-                />
+                <input type="checkbox" className="h-4 w-4 text-blue-600 border-gray-300 rounded" />
                 Recuérdame
               </label>
               <Link href="/forgot-password" className="text-blue-600 hover:underline">
@@ -138,17 +161,11 @@ export default function LoginPage() {
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              className="flex items-center justify-center gap-2 border border-gray-300 py-2 px-4 rounded-lg hover:bg-gray-50 transition-colors"
-            >
+            <button type="button" className="flex items-center justify-center gap-2 border border-gray-300 py-2 px-4 rounded-lg hover:bg-gray-50 transition-colors">
               <FcGoogle className="h-5 w-5" />
               Google
             </button>
-            <button
-              type="button"
-              className="flex items-center justify-center gap-2 border border-gray-300 py-2 px-4 rounded-lg hover:bg-gray-50 transition-colors"
-            >
+            <button type="button" className="flex items-center justify-center gap-2 border border-gray-300 py-2 px-4 rounded-lg hover:bg-gray-50 transition-colors">
               <FaGithub className="h-5 w-5" />
               GitHub
             </button>

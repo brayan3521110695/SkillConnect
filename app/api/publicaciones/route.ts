@@ -28,7 +28,14 @@ function parseForm(req: Request, headers: Headers): Promise<[any, any]> {
 
 export async function POST(req: Request) {
   try {
-    const decoded = verifyToken(req);
+    const authHeader = req.headers.get('authorization');
+
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+    }
+
+    const token = authHeader.split(' ')[1]; // Extrae solo el token
+    const decoded = verifyToken(token); // ✅ Asegúrate que aquí se recibe el string, no el req
     const userId = (decoded as any).id;
 
     const [fields, files] = await parseForm(req, req.headers);
@@ -47,7 +54,6 @@ export async function POST(req: Request) {
 
     const subida = await subirImagen(file.filepath, userId);
     const nueva = await crearPublicacion({
-
       titulo,
       descripcion,
       precio,

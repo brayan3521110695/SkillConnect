@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
+import { useSession } from "next-auth/react";
 import {
   FaHeart,
   FaRegHeart,
@@ -102,6 +103,8 @@ function MenuOpciones({ id, onEliminar }: { id: string; onEliminar: () => void }
 export default function TrabajadorHome() {
   const router = useRouter();
   const [nombre, setNombre] = useState('');
+  const { data: session } = useSession();
+const usuario = session?.user;
   const [email, setEmail] = useState('');
   const [publicaciones, setPublicaciones] = useState<any[]>([]);
   const [likes, setLikes] = useState<any[]>([]);
@@ -179,8 +182,8 @@ export default function TrabajadorHome() {
         ${menuAbierto ? 'flex w-64' : 'hidden'} lg:flex lg:w-70`}>
         <img src="/images/logo_corto.png" alt="SkillConnect" className="h-10 mb-8" />
         <img src="/images/foto_perfil.png" alt="Perfil" className="w-30 h-30 rounded-full border-4 border-white shadow-md mb-2 object-cover" />
-        <h2 className="text-2xl font-bold text-center">{nombre || 'Nombre del trabajador'}</h2>
-        <p className="text-sm text-gray-600 text-center">{email || 'correo@ejemplo.com'}</p>
+        <h2 className="text-2xl font-bold text-center">{usuario?.nombre || 'Trabajador'}</h2>
+<p className="text-sm text-gray-600 text-center">{usuario?.email || ''}</p>
         <div className="flex gap-4 text-center mb-6">
           <div><p className="font-bold text-x">{publicaciones.length}</p><span className="text-sm text-gray-600">Publicaciones</span></div>
           <div><p className="font-bold text-x">4.8</p><span className="text-sm text-gray-600">Calificación</span></div>

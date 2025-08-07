@@ -1,39 +1,93 @@
 import { NextResponse } from 'next/server';
 import connectDB from '@/lib/dbConnect';
 import Mensaje from '@/models/mensaje';
+import mongoose from 'mongoose';
 
 export async function POST(req: Request) {
   try {
     await connectDB();
-    const { conversacionId, contenido, de } = await req.json();
 
-    // ❗ Validación para evitar guardar mensajes vacíos
-    if (!contenido || contenido.trim() === '') {
-      return NextResponse.json({ error: 'El contenido del mensaje está vacío' }, { status: 400 });
+    // Validar que el cuerpo sea JSON válido
+    let body;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json(
+        { error: 'El cuerpo de la solicitud no es JSON válido' },
+        { status: 400 }
+      );
     }
 
-    const nuevo = await Mensaje.create({
-      conversacion: conversacionId,
-      contenido: contenido.trim(), // ✂️ limpiamos espacios
-      de
+    const { conversacionId, contenido, de, tipoUsuario } = body;
+
+    // Validar contenido
+    if (!contenido || contenido.trim() === '') {
+      return NextResponse.json(
+        { error: 'El contenido del mensaje está vacío' },
+        { status: 400 }
+      );
+    }
+
+    // Validar IDs
+    if (
+      !mongoose.Types.ObjectId.isValid(conversacionId) ||
+      !mongoose.Types.ObjectId.isValid(de)
+    ) {
+      return NextResponse.json(
+        { error: 'ID inválido de conversación o usuario' },
+        { status: 400 }
+      );
+    }
+
+    // Validar tipo de usuario
+    const tipoUsuarioNormalizado =
+      tipoUsuario?.toLowerCase() === 'cliente'
+        ? 'Cliente'
+        : tipoUsuario?.toLowerCase() === 'trabajador'
+        ? 'Trabajador'
+        : null;
+
+    if (!tipoUsuarioNormalizado) {
+      return NextResponse.json(
+        { error: 'Tipo de usuario inválido' },
+        { status: 400 }
+      );
+    }
+
+    // Crear nuevo mensaje
+    const nuevoMensaje = await Mensaje.create({
+      conversacion: new mongoose.Types.ObjectId(conversacionId),
+      contenido: contenido.trim(),
+      de: new mongoose.Types.ObjectId(de),
+      tipoUsuario: tipoUsuarioNormalizado,
+      creadoEn: new Date(),
     });
 
-    const mensajeCompleto = await nuevo.populate('de');
+    // Popular info del remitente
+    const mensajeCompleto = await nuevoMensaje.populate('de');
+
     return NextResponse.json(mensajeCompleto);
   } catch (error) {
-    return NextResponse.json({ error: 'Error al enviar mensaje' }, { status: 500 });
+    console.error('❌ Error al enviar mensaje:', error);
+    return NextResponse.json(
+      { error: 'Error al enviar mensaje' },
+      { status: 500 }
+    );
   }
 }
-
 
 export async function GET(req: Request) {
   try {
     await connectDB();
+
     const url = new URL(req.url || '');
     const conversacionId = url.searchParams.get('conversacionId');
 
-    if (!conversacionId) {
-      return NextResponse.json({ error: 'ID de conversación requerido' }, { status: 400 });
+    if (!conversacionId || !mongoose.Types.ObjectId.isValid(conversacionId)) {
+      return NextResponse.json(
+        { error: 'ID de conversación inválido o no enviado' },
+        { status: 400 }
+      );
     }
 
     const mensajes = await Mensaje.find({ conversacion: conversacionId })
@@ -41,8 +95,11 @@ export async function GET(req: Request) {
       .sort({ creadoEn: 1 });
 
     return NextResponse.json(mensajes);
-  } catch {
-    return NextResponse.json({ error: 'Error al obtener mensajes' }, { status: 500 });
+  } catch (error) {
+    console.error('❌ Error al obtener mensajes:', error);
+    return NextResponse.json(
+      { error: 'Error al obtener mensajes' },
+      { status: 500 }
+    );
   }
 }
-

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import axios from 'axios';
 import {
   FaSignOutAlt, FaHome, FaGlobe, FaCog, FaEnvelope, FaBell,
@@ -12,37 +13,39 @@ import Link from 'next/link';
 export default function ClienteHome() {
   const router = useRouter();
   const [menuAbierto, setMenuAbierto] = useState(false);
-  const [usuario, setUsuario] = useState({ nombre: 'Cargando...', email: '' });
   const [trabajadores, setTrabajadores] = useState([]);
   const [filtro, setFiltro] = useState('');
+  const { data: session, status } = useSession();
+
+  const usuario = session?.user;
 
   useEffect(() => {
-    const obtenerUsuario = async () => {
-      try {
-        const res = await axios.get('/api/auth/userinfo');
-        setUsuario(res.data.usuario);
-      } catch (err) {
-        console.error('Error al obtener usuario', err);
-      }
+    if (status === 'unauthenticated') {
+      router.push('/login');
+    }
+  }, [status, router]);
+
+  useEffect(() => {
+    const fetchTrabajadores = async () => {
+      const res = await fetch('/api/trabajadores');
+      const data = await res.json();
+      setTrabajadores(data);
     };
-    obtenerUsuario();
+
+    fetchTrabajadores();
   }, []);
 
-  useEffect(() => {
-  const fetchTrabajadores = async () => {
-    const res = await fetch('/api/trabajadores');
-    const data = await res.json();
-    setTrabajadores(data); // aquí los trabajadores reales
-  };
+  const trabajadoresFiltrados = trabajadores.filter((t: any) =>
+    t.nombre.toLowerCase().includes(filtro.toLowerCase()) ||
+    (t.profesion || '').toLowerCase().includes(filtro.toLowerCase())
+  );
 
-  fetchTrabajadores();
-}, []);
-
- const trabajadoresFiltrados = trabajadores.filter((t: any) =>
-  t.nombre.toLowerCase().includes(filtro.toLowerCase()) ||
-  (t.especialidad || '').toLowerCase().includes(filtro.toLowerCase())
-);
-
+  if (status === 'loading') {
+    return <p className="p-5 text-gray-500">Cargando sesión...</p>;
+  }
+if (status === 'unauthenticated') {
+  return null; // ⚠️ No mostramos nada mientras redirige
+}
   return (
     <div className="relative min-h-screen bg-gray-50 lg:flex">
       {/* Menú lateral */}
@@ -84,8 +87,8 @@ export default function ClienteHome() {
             <div className="flex items-center gap-3">
               <img src="/images/user.jpg" alt="Usuario" className="w-10 h-10 rounded-full object-cover" />
               <div className="text-sm">
-                <p className="font-semibold text-gray-900">{usuario.nombre}</p>
-                <p className="text-gray-500 text-xs">{usuario.email}</p>
+                <p className="font-semibold text-gray-900">{usuario?.nombre || 'Usuario'}</p>
+                <p className="text-gray-500 text-xs">{usuario?.email || ''}</p>
               </div>
             </div>
             <div className="mt-2">
@@ -116,28 +119,46 @@ export default function ClienteHome() {
         {/* Tarjetas de trabajadores */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {trabajadoresFiltrados.map((trab: any) => (
-            <div key={trab._id} className="border rounded-md p-4 shadow-sm bg-white">
-              <img src={trab.avatar || '/images/user.jpg'} alt={trab.nombre} className="w-16 h-16 rounded-full mb-2" />
-              <h2 className="text-lg font-semibold">{trab.nombre}</h2>
-<p className="text-sm text-gray-600">{trab.especialidad || 'Sin especialidad'}</p>
+            <div key={trab._id} className="border rounded-lg p-4 shadow-md bg-white hover:shadow-lg transition">
+              <img
+                src={trab.imagenes?.[0] || '/images/user.jpg'}
+                alt={trab.nombre}
+                className="w-20 h-20 rounded-full mx-auto object-cover mb-3"
+              />
+              <h2 className="text-xl font-semibold text-center">{trab.nombre}</h2>
+              <p className="text-center text-gray-600 text-sm">{trab.profesion || 'Sin profesión'}</p>
+              <p className="text-gray-500 text-xs mt-2 text-center">{trab.descripcion || 'Sin descripción.'}</p>
+
+              <Link
+                href={`/dashboard/cliente/detalle/${trab._id}`}
+                className="mt-3 w-full bg-green-600 hover:bg-green-700 text-white py-2 rounded text-sm text-center block"
+              >
+                Ver detalles
+              </Link>
+
               <button
-                onClick={async () => {
-                  try {
-                    const clienteRes = await axios.get('/api/auth/userinfo');
-                    const clienteId = clienteRes.data.usuario._id;
+              onClick={async () => {
+  const mensajeInicial = prompt("Escribe tu primer mensaje:");
 
-                    const res = await axios.post('/api/conversaciones', {
-                      usuario1: clienteId,
-                      usuario2: trab._id,
-                    });
+  if (!mensajeInicial || mensajeInicial.trim() === "") {
+    alert("No puedes iniciar una conversación sin mensaje.");
+    return;
+  }
 
-                    const conversacion = res.data;
-                    router.push(`/dashboard/cliente/chats/conversacion/${conversacion._id}`); // ✅ Esta es la ruta correcta
-                  } catch (error) {
-                    console.error('Error al crear conversación', error);
-                  }
-                }}
-                className="mt-3 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+  try {
+    const res = await axios.post('/api/conversaciones', {
+      clienteId: usuario?.id,
+      trabajadorId: trab._id,
+      mensajeInicial: mensajeInicial.trim()
+    });
+
+    const conversacion = res.data;
+router.push(`/dashboard/cliente/chats/conversacion/${conversacion._id}`);
+  } catch (error) {
+    console.error('Error al crear conversación', error);
+  }
+}}
+                className="mt-2 w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 text-sm"
               >
                 Enviar mensaje
               </button>

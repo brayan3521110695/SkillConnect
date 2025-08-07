@@ -13,11 +13,10 @@
     "isolatedModules": true,
     "jsx": "preserve",
     "incremental": true,
-    "types": ["next-auth", "./types/next-auth.d.ts"],
+    "types": ["next-auth"],
     "plugins": [
       {
         "name": "next"
-        
       }
     ],
     "paths": {
@@ -25,6 +24,12 @@
       "@components/*": ["./components/*"]
     }
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts", "app/api/trabajadores/route.js"],
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts",
+    "types/next-auth.d.ts" // 👈 aquí sí se incluye el archivo
+  ],
   "exclude": ["node_modules"]
 }

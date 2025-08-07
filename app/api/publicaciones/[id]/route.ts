@@ -38,7 +38,14 @@ export async function DELETE(
 // GET /api/publicaciones/[id]
 export async function GET(req: Request, { params }: { params: { id: string } }) {
   await connectDB();
-  const decoded = verifyToken(req);
+
+  const authHeader = req.headers.get('authorization');
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+  }
+
+  const token = authHeader.split(' ')[1];
+  const decoded = verifyToken(token);
   const userId = (decoded as any).id;
 
   const publicacion = await Publicacion.findById(params.id);
@@ -53,7 +60,14 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
 // PUT /api/publicaciones/[id]
 export async function PUT(req: Request, { params }: { params: { id: string } }) {
   await connectDB();
-  const decoded = verifyToken(req);
+
+  const authHeader = req.headers.get('authorization');
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+  }
+
+  const token = authHeader.split(' ')[1];
+  const decoded = verifyToken(token);
   const userId = (decoded as any).id;
 
   const body = await req.json();

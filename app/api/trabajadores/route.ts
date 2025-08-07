@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/dbConnect';
-import Trabajador from '@/models/trabajador'; // asegúrate de que esta ruta sea válida
+import Trabajador from '@/models/trabajador'; 
 
 export async function GET() {
   await dbConnect();

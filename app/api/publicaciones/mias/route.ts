@@ -1,19 +1,24 @@
-import { NextResponse } from 'next/server';
-import { verifyToken } from '@/middlewares/verifyToken';
+import { NextRequest, NextResponse } from 'next/server';
+import { getToken } from 'next-auth/jwt';
 import dbConnect from '@/lib/dbConnect';
 import Publicacion from '@/models/publicacion';
 
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
   try {
     await dbConnect();
 
-    const decoded = verifyToken(req);
-    if ((decoded as any).tipo !== 'trabajador') {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+    const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+
+    if (!token) {
+      return NextResponse.json({ error: 'No autorizado (token no presente)' }, { status: 401 });
+    }
+
+    if (token.rol !== 'trabajador') {
+      return NextResponse.json({ error: 'No autorizado (solo trabajadores)' }, { status: 403 });
     }
 
     const publicaciones = await Publicacion.find({
-      trabajadorId: decoded.id
+      trabajadorId: token.sub || token.id
     }).sort({ createdAt: -1 });
 
     return NextResponse.json(publicaciones);

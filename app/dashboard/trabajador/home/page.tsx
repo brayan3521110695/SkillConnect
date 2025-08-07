@@ -17,20 +17,30 @@ export default function DashboardTrabajador() {
   useEffect(() => {
     const obtenerDatosUsuario = async () => {
       try {
-        const res = await axios.get('/api/auth/userinfo');
-        setNombre(res.data.nombre);
-        setEmail(res.data.email);
+        const res = await axios.get('/api/auth/userinfo', {
+          withCredentials: true, // ✅ Se envían las cookies
+        });
+
+        if (res.data?.nombre && res.data?.email) {
+          setNombre(res.data.nombre);
+          setEmail(res.data.email);
+        } else {
+          console.warn('⚠️ Datos incompletos o sesión expirada');
+          router.push('/login');
+        }
       } catch (error) {
-        console.error('Error al obtener datos del trabajador:', error);
+        console.error('❌ Error al obtener datos del trabajador:', error);
         router.push('/login');
       }
     };
+
     obtenerDatosUsuario();
   }, [router]);
 
   return (
     <main className="min-h-screen bg-gray-100 px-4 sm:px-6 py-6">
       <div className="max-w-6xl mx-auto bg-white shadow-md rounded-lg p-6 space-y-6">
+
         {/* Header */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div className="flex items-center gap-4">

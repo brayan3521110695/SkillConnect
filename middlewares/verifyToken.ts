@@ -1,26 +1,22 @@
-import { NextRequest, NextResponse } from 'next/server';
+// middlewares/verifyToken.ts
 import jwt from 'jsonwebtoken';
 
-export const verifyToken = (req: Request) => {
-  const authHeader = req.headers.get('authorization');
-  const token = authHeader?.split(' ')[1];
+interface DecodedToken {
+  id: string;
+  nombre: string;
+  email: string;
+  rol: string;
+}
 
+export const verifyToken = (token: string): DecodedToken => {
   if (!token) {
     throw new Error('Token no enviado');
   }
 
   try {
-    return jwt.verify(token, process.env.JWT_SECRET || 'secreto');
-  } catch {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secreto');
+    return decoded as DecodedToken;
+  } catch (error) {
     throw new Error('Token inválido');
   }
-};
-
-
-export const config = {
-  matcher: [
-    '/cliente/home/:path*',
-    '/dashboard/:path*',
-    '/trabajador/:path*'
-  ],
 };

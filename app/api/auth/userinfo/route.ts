@@ -1,29 +1,23 @@
-import jwt from 'jsonwebtoken';
-import { NextResponse } from 'next/server';
-import type { NextRequest } from 'next/server';
+// app/api/auth/userinfo/route.ts
+
+import { getToken } from "next-auth/jwt";
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 
 export async function GET(req: NextRequest) {
-  try {
-    // Obtener el token desde la cookie
-    const token = req.cookies.get('token')?.value;
+  const token = await getToken({
+    req,
+    secret: process.env.NEXTAUTH_SECRET,
+  });
 
-    if (!token) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-    }
-
-    // Verificar y decodificar el token
-    const decoded: any = jwt.verify(token, process.env.JWT_SECRET!);
-
-    // Retornar en el formato esperado por el frontend
-    return NextResponse.json({
-      usuario: {
-        nombre: decoded.nombre,
-        email: decoded.email
-      }
-    });
-
-  } catch (error) {
-    console.error('❌ Error al verificar token:', error);
-    return NextResponse.json({ error: 'Token inválido o expirado' }, { status: 401 });
+  if (!token) {
+    return NextResponse.json({ error: "No autorizado" }, { status: 401 });
   }
+
+  return NextResponse.json({
+    nombre: token.nombre,
+    email: token.email,
+    rol: token.rol,
+    id: token.id,
+  });
 }

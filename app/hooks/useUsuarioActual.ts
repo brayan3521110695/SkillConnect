@@ -1,13 +1,29 @@
 import { useSession } from 'next-auth/react';
 
-/**
- * Hook para obtener el usuario actualmente autenticado
- * Retorna null si no hay sesión iniciada
- */
-export function useUsuarioActual() {
+interface UsuarioActual {
+  _id: string; // ✅ nombre correcto esperado por la API
+  nombre: string;
+  email: string;
+  rol: 'cliente' | 'trabajador';
+}
+
+export function useUsuarioActual(): UsuarioActual | null {
   const { data, status } = useSession();
 
-  if (status === 'loading') return null;
+  if (
+    status === 'loading' ||
+    !data?.user ||
+    !('rol' in data.user) ||
+    !('nombre' in data.user)
+  ) {
+    return null;
+  }
 
-  return data?.user ?? null;
+  return {
+    _id: (data.user as any).id, // ✅ mapear correctamente como _id
+    nombre: data.user.nombre,
+    email: data.user.email,
+    rol: data.user.rol
+  };
 }
+
