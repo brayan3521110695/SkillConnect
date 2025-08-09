@@ -1,9 +1,16 @@
 [build]
   command = "npm run build"
-  publish = ".next"
 
 [build.environment]
   NODE_VERSION = "20"
+  NETLIFY_NEXT_PLUGIN_LOGGING = "debug"   # logs detallados del plugin
+  NETLIFY_BUILD_DEBUG = "true"            # debug extra del build
+  LIGHTNINGCSS_FORCE_WASM = "1"
+  LIGHTNINGCSS_SKIP_BINARY_DOWNLOAD = "1"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
+
+[functions]
+  node_bundler = "esbuild"
+  included_files = ["public/**"]
