@@ -1,4 +1,5 @@
 'use client';
+
 import React, { useEffect, useState } from 'react';
 import {
   FaHeart, FaRegHeart, FaHome, FaGlobe, FaCog,
@@ -6,52 +7,80 @@ import {
 } from 'react-icons/fa';
 import { HiOutlineChatBubbleOvalLeft } from 'react-icons/hi2';
 import { useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
+
+type Usuario = { nombre: string; email: string; foto: string };
 
 const FotosTrabajador: React.FC = () => {
   const router = useRouter();
-  const [nombre, setNombre] = useState('');
-  const [email, setEmail] = useState('');
+  const { status } = useSession(); // solo para redirigir si no hay sesión
+
+  const [usuario, setUsuario] = useState<Usuario>({
+    nombre: 'Cargando…',
+    email: '',
+    foto: '/images/user.jpg',
+  });
+
   const [publicaciones, setPublicaciones] = useState<any[]>([]);
   const [likes, setLikes] = useState<any[]>([]);
   const [menuAbierto, setMenuAbierto] = useState(false);
 
+  // Redirige si no hay sesión
   useEffect(() => {
-    const obtenerUsuario = async () => {
+    if (status === 'unauthenticated') router.push('/login');
+  }, [status, router]);
+
+  // Cargar usuario (misma mecánica que en Home)
+  useEffect(() => {
+    const cargarUsuario = async () => {
       try {
-        const res = await fetch('/api/auth/userinfo');
+        // bust de caché con ?t=
+        const res = await fetch(`/api/auth/userinfo?t=${Date.now()}`);
+        if (!res.ok) throw new Error('No autorizado');
         const data = await res.json();
-        setNombre(data.usuario?.nombre || '');
-        setEmail(data.usuario?.email || '');
-      } catch (err) {
-        console.error('Error al obtener usuario', err);
-        router.push('/login');
+        const u = data?.usuario ?? data;
+        setUsuario({
+          nombre: u?.nombre ?? 'Trabajador',
+          email:  u?.email  ?? '',
+          foto:   u?.foto   ?? '/images/user.jpg',
+        });
+      } catch (e) {
+        console.error('No se pudo cargar userinfo', e);
       }
     };
+    cargarUsuario();
+  }, []);
 
+  // Cargar mis publicaciones
+  useEffect(() => {
     const obtenerPublicaciones = async () => {
-      const token = localStorage.getItem('token');
-      const res = await fetch('/api/publicaciones/mias', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const data = await res.json();
-      setPublicaciones(data);
-      setLikes(data.map((p: any) => ({
-        id: p._id,
-        liked: false,
-        total: p.likes || 0,
-      })));
+      try {
+        const token = localStorage.getItem('token') ?? '';
+        const res = await fetch('/api/publicaciones/mias', {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          setPublicaciones(data);
+          setLikes(
+            data.map((p: any) => ({
+              id: p._id,
+              liked: false,
+              total: p.likes || 0,
+            }))
+          );
+        }
+      } catch (e) {
+        console.error('Error obteniendo publicaciones', e);
+      }
     };
-
-    obtenerUsuario();
     obtenerPublicaciones();
-  }, [router]);
+  }, []);
 
   const toggleLike = (id: string) => {
-    setLikes((prev) =>
-      prev.map((l) =>
-        l.id === id
-          ? { ...l, liked: !l.liked, total: l.liked ? l.total - 1 : l.total + 1 }
-          : l
+    setLikes(prev =>
+      prev.map(l =>
+        l.id === id ? { ...l, liked: !l.liked, total: l.liked ? l.total - 1 : l.total + 1 } : l
       )
     );
   };
@@ -66,17 +95,28 @@ const FotosTrabajador: React.FC = () => {
       </div>
 
       {/* Sidebar izquierdo */}
-      <aside className={`bg-white shadow-md px-6 py-8 flex-col items-center fixed h-full transition-transform duration-300 z-40
-        ${menuAbierto ? 'flex w-64' : 'hidden'} lg:flex lg:w-64`}>
+      <aside
+        className={`bg-white shadow-md px-6 py-8 flex-col items-center fixed h-full transition-transform duration-300 z-40
+        ${menuAbierto ? 'flex w-64' : 'hidden'} lg:flex lg:w-64`}
+      >
         <img src="/images/logo_corto.png" alt="SkillConnect" className="h-10 mb-8" />
-        <img src="/images/foto_perfil.png" alt="Perfil" className="w-24 h-24 rounded-full border-4 border-white shadow-md mb-2 object-cover" />
-        <h2 className="text-xl font-bold text-center">{nombre || 'Nombre del trabajador'}</h2>
-        <p className="text-sm text-gray-600 mb-4 text-center">{email || 'correo@ejemplo.com'}</p>
+
+        {/* 👉 Foto que viene de la BD (igual que en Home) */}
+        <img
+          src={usuario.foto}
+          alt="Perfil"
+          className="w-24 h-24 rounded-full border-4 border-white shadow-md mb-2 object-cover"
+        />
+
+        <h2 className="text-xl font-bold text-center">{usuario.nombre}</h2>
+        <p className="text-sm text-gray-600 mb-4 text-center">{usuario.email}</p>
+
         <div className="flex gap-4 text-center mb-6">
           <div><p className="font-bold">{publicaciones.length}</p><span className="text-sm text-gray-600">Publicaciones</span></div>
           <div><p className="font-bold">4.8</p><span className="text-sm text-gray-600">Calificación</span></div>
           <div><p className="font-bold">30</p><span className="text-sm text-gray-600">Reseñas</span></div>
         </div>
+
         <nav className="flex flex-col gap-6 text-sm text-gray-800 w-full">
           <a href="/dashboard/trabajador" className="flex items-center gap-2 hover:text-blue-600"><FaHome /> Inicio</a>
           <a href="#" className="flex items-center gap-2 hover:text-blue-600"><FaGlobe /> Explora</a>

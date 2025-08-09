@@ -40,33 +40,36 @@ export default function ChatTrabajadorDetalle() {
         <p>Cargando mensajes...</p>
       ) : (
         <div className="space-y-3">
-          {mensajes.map((msg) => (
-            <div
-              key={msg._id}
-              className={`p-3 rounded-lg shadow ${
-                msg.tipoUsuario.toLowerCase() === 'trabajador'
-                  ? 'bg-blue-100 text-right'
-                  : 'bg-green-100 text-left'
-              }`}
-            >
-              <p className="text-sm">{msg.contenido || 'Mensaje vacío'}</p>
+          {mensajes.map((msg) => {
+            const esTrabajador = msg.tipoUsuario?.toLowerCase() === 'trabajador';
+            return (
+              <div
+                key={msg._id}
+                className={`p-3 rounded-lg shadow max-w-[80%] sm:max-w-md w-fit
+                  ${esTrabajador
+                    ? 'bg-blue-100 ml-auto text-right'  // 👉 burbuja a la derecha
+                    : 'bg-green-100 mr-auto text-left'  // 👉 burbuja a la izquierda
+                  }`}
+              >
+                <p className="text-sm">{msg.contenido || 'Mensaje vacío'}</p>
 
-              {msg.creadoEn ? (
-                <p className="text-xs text-gray-500">
-                  {new Date(msg.creadoEn).toLocaleString('es-MX', {
-                    weekday: 'short',
-                    year: 'numeric',
-                    month: 'short',
-                    day: '2-digit',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
-                </p>
-              ) : (
-                <p className="text-xs text-gray-400 italic">Sin fecha</p>
-              )}
-            </div>
-          ))}
+                {msg.creadoEn ? (
+                  <p className="text-xs text-gray-500 mt-1">
+                    {new Date(msg.creadoEn).toLocaleString('es-MX', {
+                      weekday: 'short',
+                      year: 'numeric',
+                      month: 'short',
+                      day: '2-digit',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </p>
+                ) : (
+                  <p className="text-xs text-gray-400 italic mt-1">Sin fecha</p>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

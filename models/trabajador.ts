@@ -1,14 +1,13 @@
 // models/trabajador.ts
-
-import mongoose, { Schema, model, models } from 'mongoose';
+import { Schema, model, models } from 'mongoose';
 
 const TrabajadorSchema = new Schema({
-  nombre: String,
-  email: String, // ← necesario para login
-  password: String, // ← necesario para login
-  rol: { type: String, default: 'trabajador' }, // ← necesario para roles
+  nombre: { type: String, required: true },
+  email:  { type: String, required: true, unique: true },
+  password:{ type: String, required: true },
+  rol:     { type: String, default: 'trabajador' },
   profesion: String,
-  avatar: String,
+  foto:    { type: String, default: '/images/user.jpg' }, // ← unificado
   categoria: String,
   titulo: String,
   precio: Number,
@@ -17,6 +16,6 @@ const TrabajadorSchema = new Schema({
   imagenes: [String],
   rating: Number,
   comentarios: Array
-}, { collection: 'trabajadores' });
+}, { collection: 'trabajadores', timestamps:true });
 
-export default models.Trabajador || model('Trabajador', TrabajadorSchema, 'trabajadores');
+export default models.Trabajador || model('Trabajador', TrabajadorSchema);

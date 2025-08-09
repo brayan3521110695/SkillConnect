@@ -1,41 +1,97 @@
 'use client';
 
-import Image from 'next/image';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
 import {
   FaStar, FaSignOutAlt, FaEdit, FaHistory,
-  FaTasks, FaBriefcase, FaCheckCircle
+  FaTasks, FaBriefcase, FaCheckCircle, FaUpload
 } from 'react-icons/fa';
+
+type Usuario = { nombre: string; email: string; foto: string };
 
 export default function DashboardTrabajador() {
   const router = useRouter();
-  const [nombre, setNombre] = useState('');
-  const [email, setEmail] = useState('');
+  const [cargando, setCargando] = useState(true);
+  const [subiendo, setSubiendo] = useState(false);
+  const [usuario, setUsuario] = useState<Usuario>({
+    nombre: 'Cargando…',
+    email: '',
+    foto: '/images/user.jpg',
+  });
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  // --- helpers ---
+  const cargarUsuario = async () => {
+    // Tolera {usuario:{...}} o plano y evita cache con ?t=
+    const { data } = await axios.get(`/api/auth/userinfo?t=${Date.now()}`, { withCredentials: true });
+    const u = data?.usuario ?? data;
+    if (!u) throw new Error('No hay sesión');
+    setUsuario({
+      nombre: u.nombre ?? 'Trabajador',
+      email:  u.email  ?? '',
+      foto:   u.foto   ?? '/images/user.jpg',
+    });
+  };
 
   useEffect(() => {
-    const obtenerDatosUsuario = async () => {
+    (async () => {
       try {
-        const res = await axios.get('/api/auth/userinfo', {
-          withCredentials: true, // ✅ Se envían las cookies
-        });
-
-        if (res.data?.nombre && res.data?.email) {
-          setNombre(res.data.nombre);
-          setEmail(res.data.email);
-        } else {
-          console.warn('⚠️ Datos incompletos o sesión expirada');
-          router.push('/login');
-        }
-      } catch (error) {
-        console.error('❌ Error al obtener datos del trabajador:', error);
+        await cargarUsuario();
+      } catch (e) {
+        console.error('No se pudo cargar userinfo', e);
         router.push('/login');
+      } finally {
+        setCargando(false);
       }
-    };
-
-    obtenerDatosUsuario();
+    })();
   }, [router]);
+
+  const onChangeFoto: React.ChangeEventHandler<HTMLInputElement> = async (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+
+    // preview inmediato
+    const anterior = usuario.foto;
+    setUsuario((u) => ({ ...u, foto: URL.createObjectURL(f) }));
+
+    try {
+      setSubiendo(true);
+
+      // Enviar como FormData con la CLAVE CORRECTA 'foto' y método POST
+      const fd = new FormData();
+      fd.append('foto', f);
+
+      const res = await fetch('/api/trabajadores/foto', {
+        method: 'POST',
+        body: fd, // sin headers manuales
+      });
+
+      // intenta leer json (si no hay body no truena)
+      let payload: any = {};
+      try { payload = await res.json(); } catch {}
+
+      if (!res.ok) {
+        alert('No se pudo actualizar la foto de perfil.' + (payload?.error ? `\n${payload.error}` : ''));
+        setUsuario((u) => ({ ...u, foto: anterior })); // revertir preview
+        return;
+      }
+
+      // refresca datos para tomar la URL final guardada en BD
+      await cargarUsuario();
+    } catch (err) {
+      console.error(err);
+      alert('No se pudo actualizar la foto de perfil.');
+      setUsuario((u) => ({ ...u, foto: anterior }));
+    } finally {
+      setSubiendo(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+
+  if (cargando) {
+    return <main className="min-h-screen grid place-items-center text-gray-500">Cargando…</main>;
+  }
 
   return (
     <main className="min-h-screen bg-gray-100 px-4 sm:px-6 py-6">
@@ -44,29 +100,53 @@ export default function DashboardTrabajador() {
         {/* Header */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div className="flex items-center gap-4">
-            <Image
-              src="/images/user.jpg"
-              alt="Foto trabajador"
-              width={80}
-              height={80}
-              className="rounded-full"
-            />
+            <div className="relative">
+              <img
+                src={usuario.foto}
+                alt="Foto trabajador"
+                className="w-20 h-20 rounded-full object-cover ring-2 ring-white shadow"
+              />
+              {/* Botón subir foto */}
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                title="Cambiar foto"
+                className="absolute -bottom-2 -right-2 w-8 h-8 rounded-full bg-white border shadow flex items-center justify-center text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                disabled={subiendo}
+              >
+                <FaUpload />
+              </button>
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={onChangeFoto}
+              />
+              {subiendo && (
+                <span className="absolute inset-0 rounded-full bg-black/30 text-white text-xs flex items-center justify-center">
+                  Subiendo…
+                </span>
+              )}
+            </div>
+
             <div>
-              <h2 className="text-2xl font-bold">{nombre || 'Nombre del trabajador'}</h2>
-              <p className="text-sm text-gray-600">{email || 'correo@ejemplo.com'}</p>
+              <h2 className="text-2xl font-bold">{usuario.nombre}</h2>
+              <p className="text-sm text-gray-600">{usuario.email}</p>
               <div className="flex items-center text-yellow-500 text-sm mt-1">
                 <FaStar />
                 <span className="ml-1">4.9 (45 reseñas)</span>
               </div>
             </div>
           </div>
-          <button
-            className="w-full md:w-auto bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 flex items-center justify-center"
-            onClick={() => router.push('/trabajador/editar')}
-          >
-            <FaEdit className="mr-2" />
-            Editar perfil
-          </button>
+
+            <button
+              className="w-full md:w-auto bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 flex items-center justify-center"
+              onClick={() => router.push('/trabajador/editar')}
+            >
+              <FaEdit className="mr-2" />
+              Editar perfil
+            </button>
         </div>
 
         {/* Grid de información */}
@@ -103,13 +183,6 @@ export default function DashboardTrabajador() {
           </div>
         </div>
 
-        {/* Disponibilidad */}
-        <div className="bg-gray-50 p-4 rounded-lg border">
-          <h3 className="font-bold text-lg mb-2">Disponibilidad</h3>
-          <p>Lunes a Viernes - 9:00 AM a 6:00 PM</p>
-          <p>📍 Zona: Tehuacán</p>
-        </div>
-
         {/* Acciones */}
         <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-4">
           <button
@@ -134,7 +207,10 @@ export default function DashboardTrabajador() {
             Servicios
           </button>
           <button
-            onClick={() => router.push('/login')}
+            onClick={async () => {
+              try { await axios.post('/api/auth/logout'); }
+              finally { router.push('/login'); }
+            }}
             className="flex items-center justify-center gap-2 p-4 bg-white border rounded hover:bg-red-100 text-red-600 text-sm"
           >
             <FaSignOutAlt />

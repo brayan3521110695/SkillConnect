@@ -1,7 +1,5 @@
 // types/next-auth.d.ts
-
-import NextAuth from "next-auth";
-import { JWT } from "next-auth/jwt";
+import { DefaultSession } from "next-auth";
 
 declare module "next-auth" {
   interface Session {
@@ -10,7 +8,8 @@ declare module "next-auth" {
       nombre: string;
       email: string;
       rol: "cliente" | "trabajador";
-    };
+      foto?: string; // <- importante
+    } & DefaultSession["user"]; // conserva name/image si las usas
   }
 
   interface User {
@@ -18,14 +17,16 @@ declare module "next-auth" {
     nombre: string;
     email: string;
     rol: "cliente" | "trabajador";
+    foto?: string;
   }
 }
 
 declare module "next-auth/jwt" {
   interface JWT {
-    id: string;
-    nombre: string;
-    email: string;
-    rol: "cliente" | "trabajador";
+    id?: string;
+    nombre?: string;
+    email?: string;
+    rol?: "cliente" | "trabajador";
+    foto?: string; // <- importante y opcional
   }
 }

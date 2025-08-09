@@ -1,9 +1,9 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-// import axios from 'axios'; // ← ya no lo necesitamos
-import { useSession } from 'next-auth/react';
+import axios from 'axios';
+import { useSession } from "next-auth/react";
 import {
   FaHeart,
   FaRegHeart,
@@ -19,6 +19,7 @@ import {
   FaImages,
   FaBars,
   FaTimes,
+  FaUpload, // 👈 para el botón de subir
 } from 'react-icons/fa';
 
 function MenuOpciones({ id, onEliminar }: { id: string; onEliminar: () => void }) {
@@ -30,7 +31,7 @@ function MenuOpciones({ id, onEliminar }: { id: string; onEliminar: () => void }
     const token = localStorage.getItem('token');
     const res = await fetch(`/api/publicaciones/${id}`, {
       method: 'DELETE',
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      headers: { Authorization: `Bearer ${token}` },
     });
     if (res.ok) {
       setConfirmDelete(false);
@@ -100,7 +101,13 @@ function MenuOpciones({ id, onEliminar }: { id: string; onEliminar: () => void }
 
 export default function TrabajadorHome() {
   const router = useRouter();
-  const { data: session, status } = useSession();
+  const { data: session } = useSession();
+  const usuario = session?.user as any;
+
+  const [nombre, setNombre] = useState('');
+  const [email, setEmail] = useState('');
+  const [foto, setFoto] = useState('/images/foto_perfil.png'); // 👈 avatar mostrado
+  const [subiendo, setSubiendo] = useState(false);             // 👈 estado de subida
 
   const [publicaciones, setPublicaciones] = useState<any[]>([]);
   const [likes, setLikes] = useState<any[]>([]);
@@ -109,38 +116,44 @@ export default function TrabajadorHome() {
   const [mensaje, setMensaje] = useState('');
   const [menuAbierto, setMenuAbierto] = useState(false);
 
-  // Redirección si no hay sesión
-  useEffect(() => {
-    if (status === 'unauthenticated') {
-      router.push('/login');
-    }
-  }, [status, router]);
+  const fileInputRef = useRef<HTMLInputElement>(null);         // 👈 input oculto
 
-  // Cargar publicaciones propias
+  useEffect(() => {
+    const obtenerDatosUsuario = async () => {
+      try {
+        const res = await axios.get('/api/auth/userinfo');
+        const u = res.data.usuario || {};
+        setNombre(u.nombre || '');
+        setEmail(u.email || '');
+        // lee misma propiedad que usas en el editor: image (fallback a foto)
+        setFoto(u.image || u.foto || '/images/foto_perfil.png');
+      } catch (error) {
+        console.error('Error al obtener datos del trabajador:', error);
+        router.push('/login');
+      }
+    };
+    obtenerDatosUsuario();
+  }, [router]);
+
   useEffect(() => {
     const fetchPublicaciones = async () => {
-      try {
-        const token = localStorage.getItem('token');
-        const res = await fetch('/api/publicaciones/mias', {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-        const data = await res.json();
+      const token = localStorage.getItem('token');
+      const res = await fetch('/api/publicaciones/mias', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
 
-        if (Array.isArray(data)) {
-          setPublicaciones(data);
-          setLikes(
-            data.map((pub: any) => ({
-              id: pub._id,
-              liked: false,
-              total: pub.likes || 0,
-            }))
-          );
-        } else {
-          console.error('❌ Error en publicaciones:', data?.error ?? 'Respuesta inesperada:', data);
-          setPublicaciones([]);
-        }
-      } catch (err) {
-        console.error('❌ Error al obtener publicaciones:', err);
+      if (Array.isArray(data)) {
+        setPublicaciones(data);
+        setLikes(
+          data.map((pub: any) => ({
+            id: pub._id,
+            liked: false,
+            total: pub.likes || 0,
+          }))
+        );
+      } else {
+        console.error('❌ Error en publicaciones:', data?.error ?? 'Respuesta inesperada:', data);
         setPublicaciones([]);
       }
     };
@@ -151,24 +164,67 @@ export default function TrabajadorHome() {
   const toggleLike = (id: string) => {
     setLikes((prev) =>
       prev.map((l: any) =>
-        l.id === id ? { ...l, liked: !l.liked, total: l.liked ? l.total - 1 : l.total + 1 } : l
+        l.id === id
+          ? { ...l, liked: !l.liked, total: l.liked ? l.total - 1 : l.total + 1 }
+          : l
       )
     );
   };
 
   const toggleGuardar = (id: string) => {
-    setGuardados((prev) => (prev.includes(id) ? prev.filter((g) => g !== id) : [...prev, id]));
+    setGuardados((prev) =>
+      prev.includes(id) ? prev.filter((g) => g !== id) : [...prev, id]
+    );
   };
 
-  if (status === 'loading') {
-    return <div className="p-6">Cargando…</div>;
-  }
-  if (status === 'unauthenticated') {
-    return null;
-  }
+  // ======== Lógica de subir imagen (idéntica en UX a tu editor) ========
+  const setPreviewFromFile = (file: File) => {
+    const url = URL.createObjectURL(file); // preview local
+    setFoto(url);
+  };
 
-  const nombre = session?.user?.nombre ?? 'Trabajador';
-  const email = session?.user?.email ?? '';
+  const abrirSelector = () => fileInputRef.current?.click();
+
+  // ===== SUBIR FOTO (usa FormData hacia /api/trabajadores/foto) =====
+const onChangeFile: React.ChangeEventHandler<HTMLInputElement> = async (e) => {
+  const file = e.target.files?.[0];
+  if (!file || !file.type.startsWith('image/')) return;
+
+  // 1) Preview local inmediato
+  setFoto(URL.createObjectURL(file));
+
+  try {
+    setSubiendo(true);
+
+    // 2) Enviar el archivo real
+    const fd = new FormData();
+    fd.append('foto', file); // <-- el route.ts acepta "foto" o "file"
+
+    const token = localStorage.getItem('token') || '';
+    const resp = await fetch('/api/trabajadores/foto', {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      body: fd,
+    });
+
+    const json = await resp.json();
+    if (!resp.ok) throw new Error(json?.error || 'Error al subir');
+
+    // 3) Usar la URL final devuelta por el backend
+    if (json?.url) setFoto(json.url);
+
+    // (opcional) refrescar tus datos de usuario
+    // const { data } = await axios.get('/api/auth/userinfo');
+    // setFoto(data.usuario?.image || data.usuario?.foto || json.url);
+  } catch (err) {
+    console.error(err);
+    alert('No se pudo actualizar la foto de perfil.');
+  } finally {
+    setSubiendo(false);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }
+};
+// =================================================================
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -180,54 +236,58 @@ export default function TrabajadorHome() {
       </div>
 
       {/* Sidebar izquierdo */}
-      <aside
-        className={`bg-white shadow-md px-6 py-8 flex-col items-center fixed h-screen transition-transform duration-300 z-40
-        ${menuAbierto ? 'flex w-64' : 'hidden'} lg:flex lg:w-70`}
-      >
+      <aside className={`bg-white shadow-md px-6 py-8 flex-col items-center fixed h-screen transition-transform duration-300 z-40
+        ${menuAbierto ? 'flex w-64' : 'hidden'} lg:flex lg:w-70`}>
+
         <img src="/images/logo_corto.png" alt="SkillConnect" className="h-10 mb-8" />
-        <img
-          src="/images/foto_perfil.png"
-          alt="Perfil"
-          className="w-30 h-30 rounded-full border-4 border-white shadow-md mb-2 object-cover"
-        />
-        <h2 className="text-2xl font-bold text-center">{nombre}</h2>
-        <p className="text-sm text-gray-600 text-center">{email}</p>
-        <div className="flex gap-4 text-center mb-6">
-          <div>
-            <p className="font-bold text-x">{publicaciones.length}</p>
-            <span className="text-sm text-gray-600">Publicaciones</span>
-          </div>
-          <div>
-            <p className="font-bold text-x">4.8</p>
-            <span className="text-sm text-gray-600">Calificación</span>
-          </div>
-          <div>
-            <p className="font-bold text-x">30</p>
-            <span className="text-sm text-gray-600">Reseñas</span>
-          </div>
+
+        {/* Avatar con botón superpuesto (igual estilo) */}
+        <div className="relative mb-2">
+          <img
+            src={foto}
+            alt="Perfil"
+            className="w-30 h-30 rounded-full object-cover ring-4 ring-white shadow-md"
+          />
+          <button
+            type="button"
+            onClick={abrirSelector}
+            className="absolute bottom-0 -right-1 bg-white text-slate-700 border rounded-full p-2 shadow hover:shadow-md active:scale-95 transition"
+            title="Subir imagen"
+            disabled={subiendo}
+          >
+            <FaUpload />
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={onChangeFile}
+          />
+          {subiendo && (
+            <span className="absolute inset-0 rounded-full bg-black/30 text-white text-xs flex items-center justify-center">
+              Subiendo…
+            </span>
+          )}
         </div>
+
+        <h2 className="text-2xl font-bold text-center">{usuario?.nombre || 'Trabajador'}</h2>
+        <p className="text-sm text-gray-600 text-center">{usuario?.email || ''}</p>
+
+        <div className="flex gap-4 text-center mb-6">
+          <div><p className="font-bold text-x">{publicaciones.length}</p><span className="text-sm text-gray-600">Publicaciones</span></div>
+          <div><p className="font-bold text-x">4.8</p><span className="text-sm text-gray-600">Calificación</span></div>
+          <div><p className="font-bold text-x">30</p><span className="text-sm text-gray-600">Reseñas</span></div>
+        </div>
+
         <nav className="flex flex-col gap-7 text-base text-gray-800 w-full px-2">
-          <a href="/dashboard/trabajador" className="flex items-center gap-2 hover:text-blue-600 transition">
-            <FaHome /> Inicio
-          </a>
-          <a href="#" className="flex items-center gap-2 hover:text-blue-600 transition">
-            <FaGlobe /> Explora
-          </a>
-          <a href="/dashboard/trabajador/fotos" className="flex items-center gap-2 hover:text-blue-600 transition">
-            <FaImages /> Fotos
-          </a>
-          <a href="/dashboard/trabajador/chats" className="flex items-center gap-2 hover:text-blue-600 transition">
-            <FaEnvelope /> Mensajes
-          </a>
-          <a href="/dashboard/trabajador/notificaciones" className="flex items-center gap-2 hover:text-blue-600 transition">
-            <FaBell /> Notificaciones
-          </a>
-          <a href="#" className="flex items-center gap-2 hover:text-blue-600 transition">
-            <FaCog /> Ajustes
-          </a>
-          <a href="#" className="flex items-center gap-2 text-red-500">
-            <FaSignOutAlt /> Salir
-          </a>
+          <a href="/dashboard/trabajador" className="flex items-center gap-2 hover:text-blue-600 transition"><FaHome /> Inicio</a>
+          <a href="#" className="flex items-center gap-2 hover:text-blue-600 transition"><FaGlobe /> Explora</a>
+          <a href="/dashboard/trabajador/fotos" className="flex items-center gap-2 hover:text-blue-600 transition"><FaImages /> Fotos</a>
+          <a href="/dashboard/trabajador/chats" className="flex items-center gap-2 hover:text-blue-600 transition"><FaEnvelope /> Mensajes</a>
+          <a href="/dashboard/trabajador/notificaciones" className="flex items-center gap-2 hover:text-blue-600 transition"><FaBell /> Notificaciones</a>
+          <a href="#" className="flex items-center gap-2 hover:text-blue-600 transition"><FaCog /> Ajustes</a>
+          <a href="#" className="flex items-center gap-2 text-red-500"><FaSignOutAlt /> Salir</a>
         </nav>
       </aside>
 
@@ -235,14 +295,10 @@ export default function TrabajadorHome() {
       <aside className="w-70 bg-white px-4 py-6 fixed right-0 top-0 h-screen overflow-y-auto hidden lg:block">
         <h3 className="text-m font-semibold text-gray-700 px-2">Sugerencias para ti</h3>
         <ul className="mt-3 space-y-4 px-2">
-          {['Lucia_12', 'BrayanC', 'J. Valerio'].map((user, i) => (
+          {["Lucia_12", "BrayanC", "J. Valerio"].map((user, i) => (
             <li key={i} className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <img
-                  src={`/images/editables/user${i + 1}.jpg`}
-                  className="w-9 h-9 rounded-full object-cover"
-                  alt={user}
-                />
+                <img src={`/images/editables/user${i + 1}.jpg`} className="w-9 h-9 rounded-full object-cover" alt={user} />
                 <div>
                   <p className="text-sm font-semibold text-gray-800">{user}</p>
                   <p className="text-xs text-gray-500">Sugerencia para ti</p>
@@ -260,19 +316,8 @@ export default function TrabajadorHome() {
           {/* Buscador */}
           <div className="relative mb-6 w-full sm:w-3/4 md:w-1/2 mx-auto">
             <span className="absolute left-4 top-2.5 text-gray-400">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-5 w-5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M21 21l-4.35-4.35m0 0A7.5 7.5 0 1110.5 3a7.5 7.5 0 016.15 13.65z"
-                />
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35m0 0A7.5 7.5 0 1110.5 3a7.5 7.5 0 016.15 13.65z" />
               </svg>
             </span>
             <input
@@ -296,12 +341,15 @@ export default function TrabajadorHome() {
             {publicaciones.map((pub: any) => {
               const likeState = likes.find((l: any) => l.id === pub._id);
               return (
-                <div key={pub._id} className="bg-white shadow-md rounded-lg p-4 mb-6 max-w-2xl mx-auto">
+                <div
+                  key={pub._id}
+                  className="bg-white shadow-md rounded-lg p-4 mb-6 max-w-2xl mx-auto"
+                >
                   {/* Header del usuario */}
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-3">
                       <img
-                        src="/images/foto_perfil.png"
+                        src={foto}  // 👈 usa la foto actual
                         className="w-10 h-10 rounded-full object-cover"
                         alt="usuario"
                       />
@@ -326,27 +374,17 @@ export default function TrabajadorHome() {
 
                   {/* Datos clave */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-gray-700 mb-3">
-                    <p>
-                      <strong>Precio:</strong> ${pub.precio}
-                    </p>
-                    <p>
-                      <strong>Categoría:</strong> {pub.categoria}
-                    </p>
-                    <p>
-                      <strong>Disponible:</strong> {pub.disponibilidad}
-                    </p>
-                    <p>
-                      <strong>Fecha:</strong> {pub.fecha}
-                    </p>
+                    <p><strong>Precio:</strong> ${pub.precio}</p>
+                    <p><strong>Categoría:</strong> {pub.categoria}</p>
+                    <p><strong>Disponible:</strong> {pub.disponibilidad}</p>
+                    <p><strong>Fecha:</strong> {pub.fecha}</p>
                   </div>
 
                   {/* Interacciones */}
                   <div className="flex justify-between items-center text-sm text-gray-600">
                     <button
                       onClick={() => toggleLike(pub._id)}
-                      className={`flex items-center gap-1 ${
-                        likeState?.liked ? 'text-red-500' : 'text-gray-800'
-                      }`}
+                      className={`flex items-center gap-1 ${likeState?.liked ? 'text-red-500' : 'text-gray-800'}`}
                     >
                       {likeState?.liked ? <FaHeart /> : <FaRegHeart />}
                       <span>{likeState?.total}</span>
@@ -379,11 +417,7 @@ export default function TrabajadorHome() {
             className="flex items-center bg-gray-900 text-white px-5 py-2 rounded-full shadow-lg hover:bg-gray-800 transition"
           >
             <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M7 8h10M7 12h4m1 8l-6-6H5a2 2 0 01-2-2V5a2 2 0 012-2h14a2 2 0 012 2v7a2 2 0 01-2 2h-1l-6 6z"
-              />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M7 8h10M7 12h4m1 8l-6-6H5a2 2 0 01-2-2V5a2 2 0 012-2h14a2 2 0 012 2v7a2 2 0 01-2 2h-1l-6 6z" />
             </svg>
             Mensajes
           </button>
@@ -401,9 +435,7 @@ export default function TrabajadorHome() {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M15 3h6v6m-6 0L21 3M9 21H3v-6m6 0L3 21" />
                 </svg>
               </button>
-              <button onClick={() => setMostrarMensajes(false)} className="text-xl hover:text-gray-300">
-                &times;
-              </button>
+              <button onClick={() => setMostrarMensajes(false)} className="text-xl hover:text-gray-300">&times;</button>
             </div>
           </div>
           <div className="max-h-80 overflow-y-auto bg-[#1c1c1e]">
@@ -417,7 +449,7 @@ export default function TrabajadorHome() {
             <div className="hover:bg-[#2c2c2e] px-4 py-3 cursor-pointer flex gap-4 items-center">
               <img src="/images/editables/chat2.jpg" className="w-10 h-10 rounded-full" />
               <div>
-                <p className="text-sm font-bold text-white">EFRABY</p>
+                <p className="font-bold text-sm text-white">EFRABY</p>
                 <p className="text-xs text-gray-400 truncate">EFRABY envió un archivo adjunto · 5 sem</p>
               </div>
             </div>

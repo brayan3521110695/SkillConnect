@@ -187,26 +187,38 @@ export default function MensajesPage() {
           </div>
         </div>
 
-        {/* Mensajes */}
-        <div className="flex-1 px-4 py-4 overflow-y-auto bg-gray-50 space-y-4 text-sm">
-          {mensajes.map((msg, idx) => (
-            <div key={idx} className="flex flex-col items-center">
-              <div className="text-xs text-gray-500 my-1">
-                {msg.creadoEn ? formatFecha(msg.creadoEn) : "Sin fecha"}
-              </div>
-              <div
-                className={`max-w-[80%] sm:max-w-xs px-4 py-2 rounded-xl shadow text-sm ${
-                  msg.de === userId
-                    ? "bg-blue-500 text-white self-end ml-auto"
-                    : "bg-gray-200 text-gray-800 self-start"
-                }`}
-              >
-                {msg.contenido}
-              </div>
-            </div>
-          ))}
-          <div ref={messagesEndRef} />
+      {/* Mensajes */}
+<div className="flex-1 px-4 py-4 overflow-y-auto bg-gray-50 space-y-4 text-sm">
+  {mensajes.map((msg, idx) => {
+    // 👇 Normaliza el id del remitente (puede venir como objeto o string)
+    const deId =
+      typeof msg.de === 'string'
+        ? msg.de
+        : (msg.de && (msg.de as any)._id) || '';
+
+    const mio = (deId || '').toString() === (userId || '').toString();
+
+    return (
+      <div
+        key={idx}
+        className={`flex flex-col ${mio ? 'items-end' : 'items-start'}`}
+      >
+        <div className="text-xs text-gray-500 my-1">
+          {msg.creadoEn ? formatFecha(msg.creadoEn) : 'Sin fecha'}
         </div>
+
+        <div
+          className={`max-w-[80%] sm:max-w-xs px-4 py-2 rounded-xl shadow text-sm ${
+            mio ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-800'
+          }`}
+        >
+          {msg.contenido}
+        </div>
+      </div>
+    );
+  })}
+  <div ref={messagesEndRef} />
+</div>
 
         {/* Input */}
         <div className="border-t border-gray-200 px-4 py-3 flex items-center gap-3">

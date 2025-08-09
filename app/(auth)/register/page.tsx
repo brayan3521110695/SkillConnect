@@ -16,7 +16,9 @@ export default function RegisterPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [tipo, setTipo] = useState<'cliente' | 'trabajador'>('cliente');
   const [especialidad, setEspecialidad] = useState('');
+  const [accepted, setAccepted] = useState(false);
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,28 +28,42 @@ export default function RegisterPage() {
       setError('Las contraseñas no coinciden');
       return;
     }
-
-    const res = await fetch('/api/auth/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        nombre,
-        apellidos,
-        email,
-        password,
-        tipo,
-        especialidad: tipo === 'trabajador' ? especialidad : undefined,
-      }),
-    });
-
-    const data = await res.json();
-
-    if (!res.ok) {
-      setError(data.error || 'Error al registrar');
+    if (!accepted) {
+      setError('Debes aceptar los Términos y el Aviso de Privacidad.');
       return;
     }
 
-    router.push('/login');
+    setLoading(true);
+    try {
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nombre,
+          apellidos,
+          email,
+          password,
+          tipo,
+          especialidad: tipo === 'trabajador' ? especialidad : undefined,
+          // Guarda el consentimiento (ajusta versión si cambias tu aviso)
+          consent: {
+            privacyVersion: '2025-08-08',
+            privacyAcceptedAt: new Date().toISOString(),
+          },
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error || 'Error al registrar');
+        return;
+      }
+
+      router.push('/login');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -106,7 +122,7 @@ export default function RegisterPage() {
               className="w-full px-3 py-2 border border-gray-300 rounded-lg"
             />
 
-            {/* Botones con icono */}
+            {/* Rol */}
             <div className="flex gap-4">
               <button
                 type="button"
@@ -139,11 +155,34 @@ export default function RegisterPage() {
               />
             )}
 
+            {/* Consentimiento */}
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={accepted}
+                onChange={(e) => setAccepted(e.target.checked)}
+                required
+              />
+              <span className="text-gray-700">
+                Acepto los{' '}
+                <Link href="/terminos" className="text-blue-600 underline">
+                  Términos de uso
+                </Link>{' '}
+                y el{' '}
+                <Link href="/aviso-de-privacidad" className="text-blue-600 underline">
+                  Aviso de Privacidad
+                </Link>
+                .
+              </span>
+            </label>
+
             <button
               type="submit"
-              className="w-full bg-green-600 text-white py-2 px-4 rounded-lg hover:bg-green-700 transition-colors"
+              disabled={!accepted || loading}
+              className="w-full bg-green-600 text-white py-2 px-4 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Registrarme
+              {loading ? 'Registrando…' : 'Registrarme'}
             </button>
           </form>
 

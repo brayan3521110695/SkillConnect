@@ -4,14 +4,13 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
 import Link from 'next/link';
-import {
-  FaSignOutAlt, FaHome, FaGlobe, FaCog, FaCommentDots, FaBell,
-  FaCheckCircle, FaClock, FaBars, FaTimes
-} from 'react-icons/fa';
+import { FaSignOutAlt, FaHome, FaGlobe, FaCog, FaCommentDots, FaBell,
+  FaCheckCircle, FaClock, FaBars, FaTimes } from 'react-icons/fa';
 
 export default function PerfilCliente() {
   const router = useRouter();
   const [menuAbierto, setMenuAbierto] = useState(false);
+  const [cargando, setCargando] = useState(true);
   const [cliente, setCliente] = useState({
     nombre: 'Cargando...',
     email: '',
@@ -22,37 +21,37 @@ export default function PerfilCliente() {
   useEffect(() => {
     const obtenerDatos = async () => {
       try {
-        const res = await axios.get('/api/auth/userinfo');
-        const usuario = res.data.usuario;
-        setCliente((prev) => ({
-          ...prev,
-          nombre: usuario.nombre,
-          email: usuario.email,
+        const res = await axios.get('/api/cliente/perfil', { withCredentials: true });
+        const u = res.data?.usuario;
+        if (!u) return router.push('/login');
+
+        setCliente({
+          nombre: u.nombre ?? 'Usuario',
+          email:  u.email  ?? '',
+          foto:   u.image  ?? '/images/user.jpg',
           serviciosContratados: 12,
-        }));
-      } catch (err) {
+        });
+      } catch (err: any) {
+        if (err?.response?.status === 401) router.push('/login');
         console.error('Error al obtener datos del cliente', err);
+      } finally {
+        setCargando(false);
       }
     };
     obtenerDatos();
-  }, []);
+  }, [router]);
 
   const cerrarMenu = () => setMenuAbierto(false);
 
   const serviciosRecientes = [
-    {
-      titulo: 'Limpieza de sala',
-      fecha: '2024-07-01',
-      estado: 'Completado',
-      imagen: '/images/limpieza.jpg',
-    },
-    {
-      titulo: 'Instalación de mini split',
-      fecha: '2024-06-28',
-      estado: 'En proceso',
-      imagen: '/images/split2.webp',
-    },
+    { titulo: 'Limpieza de sala', fecha: '2024-07-01', estado: 'Completado', imagen: '/images/limpieza.jpg' },
+    { titulo: 'Instalación de mini split', fecha: '2024-06-28', estado: 'En proceso', imagen: '/images/split2.webp' },
   ];
+
+  const primerNombre =
+    cliente.nombre && cliente.nombre !== 'Cargando...'
+      ? (cliente.nombre.split?.(' ')[0] ?? cliente.nombre)
+      : 'cliente';
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">
@@ -71,32 +70,18 @@ export default function PerfilCliente() {
         <p className="text-sm text-gray-500 text-center">{cliente.email}</p>
 
         <nav className="flex flex-col gap-4 text-sm text-gray-700 w-full items-start my-6">
-          <Link href="/cliente/home" onClick={cerrarMenu} className="flex items-center gap-2 hover:text-blue-600">
-            <FaHome /><span>Inicio</span>
-          </Link>
-          <Link href="/cliente/explora" onClick={cerrarMenu} className="flex items-center gap-2 hover:text-blue-600">
-            <FaGlobe /><span>Explora</span>
-          </Link>
-          <Link href="/cliente/ajustes" onClick={cerrarMenu} className="flex items-center gap-2 hover:text-blue-600">
-            <FaCog /><span>Ajustes</span>
-          </Link>
-          <Link href="/cliente/chats" onClick={cerrarMenu} className="flex items-center gap-2 hover:text-blue-600">
-            <FaCommentDots /><span>Mensajes</span>
-          </Link>
-          <Link href="/cliente/notificaciones" onClick={cerrarMenu} className="flex items-center gap-2 hover:text-blue-600">
-            <FaBell /><span>Notificaciones</span>
-          </Link>
+          <Link href="/dashboard/cliente/home" onClick={cerrarMenu} className="flex items-center gap-2 hover:text-blue-600"><FaHome /> <span>Inicio</span></Link>
+          <Link href="/dashboard/cliente/explora" onClick={cerrarMenu} className="flex items-center gap-2 hover:text-blue-600"><FaGlobe /><span>Explora</span></Link>
+          <Link href="/dashboard/cliente/ajustes" onClick={cerrarMenu} className="flex items-center gap-2 hover:text-blue-600"><FaCog /><span>Ajustes</span></Link>
+          <Link href="/dashboard/cliente/chats" onClick={cerrarMenu} className="flex items-center gap-2 hover:text-blue-600"><FaCommentDots /><span>Mensajes</span></Link>
+          <Link href="/dashboard/cliente/notificaciones" onClick={cerrarMenu} className="flex items-center gap-2 hover:text-blue-600"><FaBell /><span>Notificaciones</span></Link>
         </nav>
 
         <button
           onClick={async () => {
-            try {
-              await axios.post('/api/auth/logout');
-            } catch (err) {
-              console.error('Error al cerrar sesión', err);
-            } finally {
-              router.push('/login');
-            }
+            try { await axios.post('/api/auth/logout'); }
+            catch (err) { console.error('Error al cerrar sesión', err); }
+            finally { router.push('/login'); }
           }}
           className="flex items-center gap-2 text-red-600 hover:underline text-sm w-full justify-start mt-4"
         >
@@ -108,9 +93,7 @@ export default function PerfilCliente() {
       {/* Main */}
       <main className="flex-1 overflow-y-auto bg-gray-50 mt-16 px-4 lg:ml-64 scrollbar-hide">
         <div className="p-6 sm:p-8">
-          <h1 className="text-3xl font-bold mb-6">
-            👋 ¡Hola, {cliente.nombre !== 'Cargando...' ? cliente.nombre.split(' ')[0] : 'cliente'}!
-          </h1>
+          <h1 className="text-3xl font-bold mb-6">👋 ¡Hola, {primerNombre}!</h1>
 
           <section className="bg-white p-6 rounded-xl shadow-md mb-8">
             <h2 className="text-xl font-semibold mb-4">Resumen de cuenta</h2>
@@ -129,10 +112,11 @@ export default function PerfilCliente() {
               </div>
             </div>
             <button
-              onClick={() => router.push('/cliente/perfil/editar')}
+              onClick={() => router.push('/dashboard/cliente/perfil/editar')}
               className="mt-6 w-full py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
+              disabled={cargando}
             >
-              Editar información
+              {cargando ? 'Cargando...' : 'Editar información'}
             </button>
           </section>
 
