@@ -1,89 +1,84 @@
-import { NextRequest, NextResponse } from 'next/server';
-import Publicacion from '@/models/publicacion';
-import { verifyToken } from '@/middlewares/verifyToken';
-import { verify } from 'jsonwebtoken';
+// app/api/publicaciones/[id]/route.ts
+import { NextResponse } from 'next/server';
 import connectDB from '@/lib/dbConnect';
+import Publicacion from '@/models/publicacion';
+import { getServerSession } from 'next-auth';
+import { getToken } from 'next-auth/jwt';
+import { authOptions } from '@/lib/authOptions';
 
+type ParamsPromise = { params: Promise<{ id: string }> };
 
-// DELETE /api/publicaciones/[id]
-export async function DELETE(
-  req: NextRequest,
-  context: { params: { id: string } }
-) {
-  const { id } = context.params; // ✅ así accedes a params.id
-
-  const token = req.headers.get('Authorization')?.replace('Bearer ', '');
-  if (!token) {
-    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+async function getUserFromAuth(req: Request) {
+  const session = await getServerSession(authOptions);
+  if (session?.user) {
+    const id  = (session.user as any).id ?? (session as any).user?.sub;
+    const rol = (session.user as any).rol;
+    if (id) return { id: String(id), rol };
   }
-
-  let decoded;
-  try {
-    decoded = verify(token, process.env.JWT_SECRET!);
-  } catch {
-    return NextResponse.json({ error: 'Token inválido' }, { status: 401 });
+  const jwt = await getToken({ req: req as any, secret: process.env.NEXTAUTH_SECRET });
+  if (jwt) {
+    const id  = (jwt as any).id ?? jwt.sub;
+    const rol = (jwt as any).rol;
+    if (id) return { id: String(id), rol };
   }
-
-  const userId = (decoded as any).id;
-
-  const publicacion = await Publicacion.findById(id);
-  if (!publicacion || publicacion.trabajadorId.toString() !== userId) {
-    return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
-  }
-
-  await Publicacion.findByIdAndDelete(id);
-  return NextResponse.json({ mensaje: 'Eliminado correctamente' });
+  return null;
 }
 
-// GET /api/publicaciones/[id]
-export async function GET(req: Request, { params }: { params: { id: string } }) {
-  await connectDB();
-
-  const authHeader = req.headers.get('authorization');
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-  }
-
-  const token = authHeader.split(' ')[1];
-  const decoded = verifyToken(token);
-  const userId = (decoded as any).id;
-
-  const publicacion = await Publicacion.findById(params.id);
-
-  if (!publicacion || publicacion.trabajadorId.toString() !== userId) {
-    return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
-  }
-
-  return NextResponse.json(publicacion);
+function esAutor(pub: any, userId?: string) {
+  return !!(pub && userId) && String(pub.trabajadorId) === String(userId);
 }
 
-// PUT /api/publicaciones/[id]
-export async function PUT(req: Request, { params }: { params: { id: string } }) {
+export async function GET(req: Request, { params }: ParamsPromise) {
   await connectDB();
+  const { id } = await params; // 👈 obligatorio
 
-  const authHeader = req.headers.get('authorization');
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-  }
+  const user = await getUserFromAuth(req);
+  if (!user) return NextResponse.json({ error: 'No autorizado (sin sesión)' }, { status: 401 });
 
-  const token = authHeader.split(' ')[1];
-  const decoded = verifyToken(token);
-  const userId = (decoded as any).id;
+  const pub = await Publicacion.findById(id);
+  if (!pub)   return NextResponse.json({ error: 'No encontrada' }, { status: 404 });
+  if (!esAutor(pub, user.id)) return NextResponse.json({ error: 'Prohibido' }, { status: 403 });
+
+  return NextResponse.json(pub);
+}
+
+export async function PUT(req: Request, { params }: ParamsPromise) {
+  await connectDB();
+  const { id } = await params; // 👈 obligatorio
+
+  const user = await getUserFromAuth(req);
+  if (!user) return NextResponse.json({ error: 'No autorizado (sin sesión)' }, { status: 401 });
 
   const body = await req.json();
-  const { descripcion, categoria, imagen } = body;
+  const { titulo, descripcion, categoria, imagen, precio, disponibilidad, fecha } = body;
 
-  const publicacion = await Publicacion.findById(params.id);
+  const pub = await Publicacion.findById(id);
+  if (!pub)   return NextResponse.json({ error: 'No encontrada' }, { status: 404 });
+  if (!esAutor(pub, user.id)) return NextResponse.json({ error: 'Prohibido' }, { status: 403 });
 
-  if (!publicacion || publicacion.trabajadorId.toString() !== userId) {
-    return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
-  }
+  if (titulo !== undefined)         pub.titulo = titulo;
+  if (descripcion !== undefined)    pub.descripcion = descripcion;
+  if (categoria !== undefined)      pub.categoria = categoria;
+  if (imagen !== undefined)         pub.imagen = imagen;
+  if (precio !== undefined)         pub.precio = precio;
+  if (disponibilidad !== undefined) pub.disponibilidad = disponibilidad;
+  if (fecha !== undefined)          pub.fecha = fecha;
 
-  publicacion.descripcion = descripcion;
-  publicacion.categoria = categoria;
-  publicacion.imagen = imagen;
+  await pub.save();
+  return NextResponse.json(pub);
+}
 
-  await publicacion.save();
+export async function DELETE(req: Request, { params }: ParamsPromise) {
+  await connectDB();
+  const { id } = await params; // 👈 obligatorio
 
-  return NextResponse.json(publicacion);
+  const user = await getUserFromAuth(req);
+  if (!user) return NextResponse.json({ error: 'No autorizado (sin sesión)' }, { status: 401 });
+
+  const pub = await Publicacion.findById(id);
+  if (!pub)   return NextResponse.json({ error: 'No encontrada' }, { status: 404 });
+  if (!esAutor(pub, user.id)) return NextResponse.json({ error: 'Prohibido' }, { status: 403 });
+
+  await pub.deleteOne();
+  return NextResponse.json({ mensaje: 'Eliminado correctamente' });
 }

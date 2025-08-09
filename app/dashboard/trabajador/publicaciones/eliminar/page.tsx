@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 
 interface Publicacion {
   _id: string;
@@ -12,25 +13,40 @@ interface Publicacion {
 }
 
 export default function PublicacionesPage() {
+  const router = useRouter();
+  const { status } = useSession(); // ← usamos la sesión de NextAuth
   const [publicaciones, setPublicaciones] = useState<Publicacion[]>([]);
   const [error, setError] = useState('');
   const [mensaje, setMensaje] = useState('');
-  const router = useRouter();
+  const [cargando, setCargando] = useState(true);
+  const [eliminandoId, setEliminandoId] = useState<string | null>(null);
+
+  // Si no hay sesión, redirige a login
+  useEffect(() => {
+    if (status === 'unauthenticated') {
+      router.push('/login');
+    }
+  }, [status, router]);
 
   useEffect(() => {
-    fetchPublicaciones();
-  }, []);
+    if (status === 'authenticated') {
+      fetchPublicaciones();
+    }
+  }, [status]);
 
   const fetchPublicaciones = async () => {
     try {
-      const token = localStorage.getItem('token');
+      setCargando(true);
+      setError('');
+
       const res = await fetch('/api/publicaciones/mias', {
-        headers: { Authorization: `Bearer ${token}` },
+        cache: 'no-store', // para no cachear en cliente
       });
       const data = await res.json();
 
       if (!res.ok) {
         setError(data.error || 'Error al cargar publicaciones');
+        setPublicaciones([]);
         return;
       }
 
@@ -38,44 +54,66 @@ export default function PublicacionesPage() {
     } catch (err) {
       console.error(err);
       setError('Error al conectar con el servidor');
+      setPublicaciones([]);
+    } finally {
+      setCargando(false);
     }
   };
 
   const handleEliminar = async (id: string) => {
-    const confirm = window.confirm('¿Estás seguro de eliminar esta publicación?');
-    if (!confirm) return;
+    const confirmado = window.confirm('¿Estás seguro de eliminar esta publicación?');
+    if (!confirmado) return;
 
     try {
-      const token = localStorage.getItem('token');
+      setEliminandoId(id);
       const res = await fetch(`/api/publicaciones/${id}`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
       });
 
       if (!res.ok) {
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         alert(data.error || 'Error al eliminar publicación');
         return;
       }
 
+      // Optimista: quita del estado sin re-fetch completo
+      setPublicaciones((prev) => prev.filter((p) => p._id !== id));
       setMensaje('✅ Publicación eliminada');
       setTimeout(() => setMensaje(''), 3000);
-      fetchPublicaciones();
     } catch (err) {
       console.error(err);
       alert('Error al conectar con el servidor');
+    } finally {
+      setEliminandoId(null);
     }
   };
+
+  if (status === 'loading') {
+    return <main className="min-h-screen grid place-items-center">Cargando…</main>;
+  }
+  if (status === 'unauthenticated') {
+    return null;
+  }
 
   return (
     <main className="min-h-screen bg-gray-100 px-4 sm:px-6 py-10">
       <div className="max-w-5xl mx-auto">
-        <h1 className="text-2xl font-bold mb-6 text-gray-800">Mis Publicaciones</h1>
+        <div className="flex items-center justify-between gap-3 mb-6">
+          <h1 className="text-2xl font-bold text-gray-800">Mis Publicaciones</h1>
+          <button
+            onClick={fetchPublicaciones}
+            className="text-sm px-3 py-1.5 rounded border border-gray-300 bg-white hover:bg-gray-50"
+          >
+            Recargar
+          </button>
+        </div>
 
         {mensaje && <p className="text-green-600 mb-4">{mensaje}</p>}
         {error && <p className="text-red-600 mb-4">{error}</p>}
 
-        {publicaciones.length === 0 ? (
+        {cargando ? (
+          <p className="text-gray-600">Cargando publicaciones…</p>
+        ) : publicaciones.length === 0 ? (
           <p className="text-gray-600 text-center">No tienes publicaciones aún.</p>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -101,16 +139,19 @@ export default function PublicacionesPage() {
 
                   <div className="flex justify-end gap-3 mt-4">
                     <button
-                      onClick={() => router.push(`/dashboard/trabajador/publicaciones/editar/${publi._id}`)}
+                      onClick={() =>
+                        router.push(`/dashboard/trabajador/publicaciones/editar/${publi._id}`)
+                      }
                       className="text-sm px-4 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
                     >
                       Editar
                     </button>
                     <button
                       onClick={() => handleEliminar(publi._id)}
-                      className="text-sm px-4 py-1 bg-red-600 text-white rounded hover:bg-red-700"
+                      disabled={eliminandoId === publi._id}
+                      className="text-sm px-4 py-1 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-60"
                     >
-                      Eliminar
+                      {eliminandoId === publi._id ? 'Eliminando…' : 'Eliminar'}
                     </button>
                   </div>
                 </div>
