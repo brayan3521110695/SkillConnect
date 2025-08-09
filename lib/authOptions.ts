@@ -103,7 +103,6 @@ export const authOptions: NextAuthOptions = {
 
     async session({ session, token }) {
       const t = token as CustomToken;
-      console.log("✅ SESSION generada. Datos del token:", token);
 
       session.user = {
         ...session.user,
