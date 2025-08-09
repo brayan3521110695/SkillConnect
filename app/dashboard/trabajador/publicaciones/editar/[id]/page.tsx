@@ -2,8 +2,14 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 
 export default function EditarPublicacionPage() {
+  const router = useRouter();
+  const params = useParams();
+  const id = params.id as string;
+
+  const { status } = useSession(); // control de sesión por cookie
   const [titulo, setTitulo] = useState('');
   const [descripcion, setDescripcion] = useState('');
   const [categoria, setCategoria] = useState('');
@@ -15,54 +21,70 @@ export default function EditarPublicacionPage() {
   const [preview, setPreview] = useState<string | null>(null);
   const [mensaje, setMensaje] = useState('');
   const [error, setError] = useState('');
+  const [cargando, setCargando] = useState(true);
+  const [guardando, setGuardando] = useState(false);
 
-  const router = useRouter();
-  const params = useParams();
-  const id = params.id as string;
-
+  // Redirige si no hay sesión
   useEffect(() => {
-    const fetchPublicacion = async () => {
-      const token = localStorage.getItem('token');
-      const res = await fetch(`/api/publicaciones/${id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
+    if (status === 'unauthenticated') router.push('/login');
+  }, [status, router]);
 
-      setTitulo(data.titulo);
-      setDescripcion(data.descripcion);
-      setCategoria(data.categoria);
-      setPrecio(data.precio);
-      setDisponibilidad(data.disponibilidad);
-      setFecha(data.fecha);
-      setImagenURL(data.imagen);
-      setPreview(data.imagen);
-    };
+  // Carga la publicación
+  useEffect(() => {
+    if (!id || status !== 'authenticated') return;
 
-    fetchPublicacion();
-  }, [id]);
+    (async () => {
+      try {
+        setCargando(true);
+        setError('');
+
+        const res = await fetch(`/api/publicaciones/${id}`, { cache: 'no-store' }); // sin Authorization
+        const data = await res.json();
+
+        if (!res.ok) {
+          setError(data.error || 'No se pudo cargar la publicación');
+          setCargando(false);
+          return;
+        }
+
+        setTitulo(data.titulo ?? '');
+        setDescripcion(data.descripcion ?? '');
+        setCategoria(data.categoria ?? '');
+        setPrecio(String(data.precio ?? ''));
+        setDisponibilidad(data.disponibilidad ?? '');
+        setFecha((data.fecha ?? '').slice(0, 10)); // si es ISO, recorta a yyyy-mm-dd
+        setImagenURL(data.imagen ?? '');
+        setPreview(data.imagen ?? '');
+      } catch (e) {
+        console.error(e);
+        setError('Error al conectar con el servidor');
+      } finally {
+        setCargando(false);
+      }
+    })();
+  }, [id, status]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setNuevaImagen(file);
-      setPreview(URL.createObjectURL(file));
-    }
+    const file = e.target.files?.[0] || null;
+    setNuevaImagen(file);
+    setPreview(file ? URL.createObjectURL(file) : imagenURL || null);
   };
 
+  // Sube imagen sin Authorization (sesión via cookie)
   const subirImagen = async (file: File): Promise<string | null> => {
     const formData = new FormData();
     formData.append('imagen', file);
-    formData.append('usuarioId', 'temporal');
 
     try {
-      const token = localStorage.getItem('token');
       const res = await fetch('/api/upload', {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
         body: formData,
       });
-
       const data = await res.json();
+      if (!res.ok) {
+        console.error('❌ Error subiendo imagen:', data);
+        return null;
+      }
       return data.secure_url || null;
     } catch (err) {
       console.error('❌ Error subiendo imagen:', err);
@@ -75,25 +97,28 @@ export default function EditarPublicacionPage() {
     setError('');
     setMensaje('');
 
+    // Validaciones mínimas
+    if (!titulo.trim()) return setError('El título es obligatorio');
+    if (!descripcion.trim()) return setError('La descripción es obligatoria');
+    if (precio && Number.isNaN(Number(precio))) return setError('Precio inválido');
+
     try {
+      setGuardando(true);
       let urlImagen = imagenURL;
+
       if (nuevaImagen) {
         const subida = await subirImagen(nuevaImagen);
         if (!subida) throw new Error('No se pudo subir la nueva imagen');
         urlImagen = subida;
       }
 
-      const token = localStorage.getItem('token');
       const res = await fetch(`/api/publicaciones/${id}`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { 'Content-Type': 'application/json' }, // sin Authorization
         body: JSON.stringify({
           titulo,
           descripcion,
-          precio,
+          precio: precio ? Number(precio) : undefined,
           disponibilidad,
           fecha,
           categoria,
@@ -101,24 +126,31 @@ export default function EditarPublicacionPage() {
         }),
       });
 
+      const data = await res.json();
       if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.error || 'Error al actualizar');
+        throw new Error(data.error || 'Error al actualizar');
       }
 
       setMensaje('✅ Publicación actualizada');
-      setTimeout(() => router.push('/dashboard/trabajador'), 1500);
+      setTimeout(() => router.push('/dashboard/trabajador'), 1200);
     } catch (err: any) {
-      setError(err.message || 'Error inesperado');
+      setError(err?.message || 'Error inesperado');
+    } finally {
+      setGuardando(false);
     }
   };
+
+  if (status === 'loading' || cargando) {
+    return <div className="max-w-2xl mx-auto p-6 mt-10">Cargando…</div>;
+  }
+  if (status === 'unauthenticated') return null;
 
   return (
     <div className="max-w-2xl mx-auto bg-white p-6 rounded-lg shadow-md mt-10">
       <h1 className="text-2xl font-bold text-gray-800 mb-4">Editar Publicación</h1>
 
-      {error && <p className="text-red-600">{error}</p>}
-      {mensaje && <p className="text-green-600">{mensaje}</p>}
+      {error && <p className="text-red-600 mb-2">{error}</p>}
+      {mensaje && <p className="text-green-600 mb-2">{mensaje}</p>}
 
       <form onSubmit={handleSubmit} className="space-y-5">
         <input
@@ -127,6 +159,7 @@ export default function EditarPublicacionPage() {
           className="w-full border p-3 rounded-md"
           value={titulo}
           onChange={(e) => setTitulo(e.target.value)}
+          required
         />
 
         <textarea
@@ -144,6 +177,7 @@ export default function EditarPublicacionPage() {
           className="w-full border p-3 rounded-md"
           value={precio}
           onChange={(e) => setPrecio(e.target.value)}
+          min="0"
         />
 
         <input
@@ -190,9 +224,10 @@ export default function EditarPublicacionPage() {
 
         <button
           type="submit"
-          className="w-full bg-gradient-to-r from-purple-500 to-blue-500 text-white py-3 rounded-md text-lg font-semibold hover:from-purple-600 hover:to-blue-600 transition"
+          disabled={guardando}
+          className="w-full bg-gradient-to-r from-purple-500 to-blue-500 text-white py-3 rounded-md text-lg font-semibold hover:from-purple-600 hover:to-blue-600 transition disabled:opacity-60"
         >
-          Guardar Cambios
+          {guardando ? 'Guardando…' : 'Guardar Cambios'}
         </button>
       </form>
     </div>
